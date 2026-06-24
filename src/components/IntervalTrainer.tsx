@@ -107,6 +107,39 @@ export const IntervalTrainer: React.FC<IntervalTrainerProps> = ({ onAddScore }) 
     }
   };
 
+  const playOptionInterval = async (optionIntervalName: string) => {
+    audioEngine.stop();
+    const intervalDef = INTERVALS.find((i) => i.name === optionIntervalName);
+    if (!intervalDef) return;
+
+    // Parse baseNote to get MIDI index
+    const noteName = baseNote.slice(0, -1);
+    const octave = parseInt(baseNote.slice(-1), 10);
+    const baseIndex = CHROMATIC_NOTES.indexOf(noteName);
+    if (baseIndex === -1) return;
+
+    const baseMidi = 12 * (octave + 1) + baseIndex;
+    const targetMidi = baseMidi + intervalDef.semitones;
+    const targetOctave = Math.floor(targetMidi / 12) - 1;
+    const targetName = CHROMATIC_NOTES[targetMidi % 12];
+    const optionTargetNote = `${targetName}${targetOctave}`;
+
+    if (playDirection === 'ascending') {
+      await audioEngine.playNote(baseNote, 'q');
+      setTimeout(() => {
+        audioEngine.playNote(optionTargetNote, 'q');
+      }, 500);
+    } else if (playDirection === 'descending') {
+      await audioEngine.playNote(optionTargetNote, 'q');
+      setTimeout(() => {
+        audioEngine.playNote(baseNote, 'q');
+      }, 500);
+    } else {
+      // Harmonic: play together
+      await audioEngine.playChord([baseNote, optionTargetNote], 'h');
+    }
+  };
+
   // Re-play when generating or when changing play styles
   useEffect(() => {
     let timer: any;
@@ -207,12 +240,12 @@ export const IntervalTrainer: React.FC<IntervalTrainerProps> = ({ onAddScore }) 
             if (isAnswered) {
               if (option === correctInterval.name) {
                 // Correct answer is highlighted in green
-                btnStyle = 'border-green-500 bg-green-500/10 text-green-700 dark:text-green-300 font-bold';
+                btnStyle = 'border-green-500 bg-green-500/10 text-green-700 dark:text-green-300 font-bold hover:bg-green-500/20 active:scale-95 cursor-pointer';
               } else if (isSelected) {
                 // Selected wrong option is highlighted in red
-                btnStyle = 'border-red-500 bg-red-500/10 text-red-700 dark:text-red-300 font-bold';
+                btnStyle = 'border-red-500 bg-red-500/10 text-red-700 dark:text-red-300 font-bold hover:bg-red-500/20 active:scale-95 cursor-pointer';
               } else {
-                btnStyle = 'border-slate-100 dark:border-slate-900 opacity-50';
+                btnStyle = 'border-slate-200 dark:border-slate-800 opacity-60 hover:opacity-100 hover:bg-slate-50 dark:hover:bg-slate-850 active:scale-95 cursor-pointer';
               }
             } else if (isSelected) {
               btnStyle = 'border-music-500 bg-music-500/5 text-music-600';
@@ -221,11 +254,19 @@ export const IntervalTrainer: React.FC<IntervalTrainerProps> = ({ onAddScore }) 
             return (
               <button
                 key={option}
-                onClick={() => handleOptionSelect(option)}
-                disabled={isAnswered}
-                className={`py-4 px-2 rounded-2xl border text-sm font-semibold transition-all flex items-center justify-center gap-2 ${btnStyle}`}
+                onClick={() => {
+                  if (isAnswered) {
+                    playOptionInterval(option);
+                  } else {
+                    handleOptionSelect(option);
+                  }
+                }}
+                className={`py-4 px-2 rounded-2xl border text-sm font-semibold transition-all flex items-center justify-center gap-2 relative ${btnStyle}`}
               >
-                {option}
+                <span>{option}</span>
+                {isAnswered && (
+                  <Volume2 className="w-4 h-4 text-current opacity-70 hover:opacity-100 transition-opacity" />
+                )}
               </button>
             );
           })}
