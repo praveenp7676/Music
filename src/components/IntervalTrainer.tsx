@@ -35,6 +35,19 @@ const INTERVALS: IntervalDef[] = [
 
 const CHROMATIC_NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
+const SCALE_FORMULAS: Record<string, number[]> = {
+  'Major': [0, 2, 4, 5, 7, 9, 11],
+  'Natural Minor': [0, 2, 3, 5, 7, 8, 10],
+  'Harmonic Minor': [0, 2, 3, 5, 7, 8, 11],
+  'Melodic Minor': [0, 2, 3, 5, 7, 9, 11],
+  'Dorian': [0, 2, 3, 5, 7, 9, 10],
+  'Phrygian': [0, 1, 3, 5, 7, 8, 10],
+  'Lydian': [0, 2, 4, 6, 7, 9, 11],
+  'Mixolydian': [0, 2, 4, 5, 7, 9, 10],
+  'Pentatonic Major': [0, 2, 4, 7, 9],
+  'Pentatonic Minor': [0, 3, 5, 7, 10],
+};
+
 export const IntervalTrainer: React.FC<IntervalTrainerProps> = ({ onAddScore }) => {
   const [baseNote, setBaseNote] = useState('C4');
   const [targetNote, setTargetNote] = useState('G4');
@@ -48,6 +61,12 @@ export const IntervalTrainer: React.FC<IntervalTrainerProps> = ({ onAddScore }) 
   const [isCorrect, setIsCorrect] = useState(false);
   const [scoreStats, setScoreStats] = useState({ correct: 0, total: 0 });
 
+  // Scale Practice Mode states
+  const [isScaleModeEnabled, setIsScaleModeEnabled] = useState(false);
+  const [selectedScaleRoot, setSelectedScaleRoot] = useState('E');
+  const [selectedScaleFormula, setSelectedScaleFormula] = useState('Major');
+  const [scaleNotesMode, setScaleNotesMode] = useState<'tonic' | 'diatonic'>('tonic');
+
   // Time tracking and session stats
   const [questionStartTime, setQuestionStartTime] = useState<number>(Date.now());
   const [sessionHistory, setSessionHistory] = useState<SessionHistoryItem[]>([]);
@@ -59,20 +78,89 @@ export const IntervalTrainer: React.FC<IntervalTrainerProps> = ({ onAddScore }) 
     setIsAnswered(false);
     setQuestionStartTime(Date.now());
 
-    // Pick random base note in C4-C5 range
-    const baseIndex = Math.floor(Math.random() * 12); // C4 to B4
-    const base = `${CHROMATIC_NOTES[baseIndex]}4`;
+    let base = '';
+    let interval: IntervalDef;
+    let target = '';
+
+    if (isScaleModeEnabled) {
+      const rootIndex = CHROMATIC_NOTES.indexOf(selectedScaleRoot);
+      const formula = SCALE_FORMULAS[selectedScaleFormula] || SCALE_FORMULAS['Major'];
+      const scalePitchClasses = formula.map((semitones) => CHROMATIC_NOTES[(rootIndex + semitones) % 12]);
+
+      if (scaleNotesMode === 'tonic') {
+        // Base note is always root note in octave 4 (e.g., 'E4')
+        base = `${selectedScaleRoot}4`;
+        const baseMidi = 12 * (4 + 1) + rootIndex;
+
+        // Find all intervals from 1 to 12 semitones where target note is in the scale
+        const validIntervals = INTERVALS.filter((intDef) => {
+          const targetMidi = baseMidi + intDef.semitones;
+          const targetName = CHROMATIC_NOTES[targetMidi % 12];
+          return scalePitchClasses.includes(targetName);
+        });
+
+        if (validIntervals.length > 0) {
+          interval = validIntervals[Math.floor(Math.random() * validIntervals.length)];
+        } else {
+          interval = INTERVALS[6]; // Perfect 5th fallback
+        }
+
+        const targetMidi = baseMidi + interval.semitones;
+        const targetOctave = Math.floor(targetMidi / 12) - 1;
+        const targetName = CHROMATIC_NOTES[targetMidi % 12];
+        target = `${targetName}${targetOctave}`;
+      } else {
+        // Diatonic mode: base and target notes must both be in scale
+        // Find all scale pitches in octave 4
+        const octave4BaseNotes = CHROMATIC_NOTES
+          .filter((name) => scalePitchClasses.includes(name))
+          .map((name) => `${name}4`);
+
+        if (octave4BaseNotes.length === 0) {
+          base = `${selectedScaleRoot}4`;
+        } else {
+          base = octave4BaseNotes[Math.floor(Math.random() * octave4BaseNotes.length)];
+        }
+
+        const baseName = base.slice(0, -1);
+        const baseIdx = CHROMATIC_NOTES.indexOf(baseName);
+        const baseMidi = 12 * (4 + 1) + baseIdx;
+
+        // Find all intervals from 1 to 12 semitones where target note is in the scale
+        const validIntervals = INTERVALS.filter((intDef) => {
+          const targetMidi = baseMidi + intDef.semitones;
+          const targetName = CHROMATIC_NOTES[targetMidi % 12];
+          return scalePitchClasses.includes(targetName);
+        });
+
+        if (validIntervals.length > 0) {
+          interval = validIntervals[Math.floor(Math.random() * validIntervals.length)];
+        } else {
+          interval = INTERVALS[6]; // Fallback
+        }
+
+        const targetMidi = baseMidi + interval.semitones;
+        const targetOctave = Math.floor(targetMidi / 12) - 1;
+        const targetName = CHROMATIC_NOTES[targetMidi % 12];
+        target = `${targetName}${targetOctave}`;
+      }
+    } else {
+      // Pick random base note in C4-C5 range
+      const baseIndex = Math.floor(Math.random() * 12); // C4 to B4
+      base = `${CHROMATIC_NOTES[baseIndex]}4`;
+
+      // Pick random interval
+      interval = INTERVALS[Math.floor(Math.random() * INTERVALS.length)];
+
+      // Calculate target note
+      const targetMidi = 12 * (4 + 1) + baseIndex + interval.semitones;
+      const targetOctave = Math.floor(targetMidi / 12) - 1;
+      const targetName = CHROMATIC_NOTES[targetMidi % 12];
+      target = `${targetName}${targetOctave}`;
+    }
+
     setBaseNote(base);
-
-    // Pick random interval
-    const interval = INTERVALS[Math.floor(Math.random() * INTERVALS.length)];
     setCorrectInterval(interval);
-
-    // Calculate target note
-    const targetMidi = 12 * (4 + 1) + baseIndex + interval.semitones;
-    const targetOctave = Math.floor(targetMidi / 12) - 1;
-    const targetName = CHROMATIC_NOTES[targetMidi % 12];
-    const target = `${targetName}${targetOctave}`;
     setTargetNote(target);
 
     // Generate options: correct option + 3 random ones
@@ -86,7 +174,7 @@ export const IntervalTrainer: React.FC<IntervalTrainerProps> = ({ onAddScore }) 
 
   useEffect(() => {
     generateQuestion();
-  }, []);
+  }, [isScaleModeEnabled, selectedScaleRoot, selectedScaleFormula, scaleNotesMode]);
 
   const playInterval = async () => {
     audioEngine.stop();
@@ -199,6 +287,99 @@ export const IntervalTrainer: React.FC<IntervalTrainerProps> = ({ onAddScore }) 
               {scoreStats.correct} / {scoreStats.total}
             </span>
           </div>
+        </div>
+
+        {/* Scale Practice Section */}
+        <div className="bg-slate-100/50 dark:bg-slate-900/40 border border-slate-200/60 dark:border-slate-800/80 rounded-2xl p-4 mb-6">
+          <div className="flex justify-between items-center">
+            <div>
+              <span className="text-sm font-bold text-slate-700 dark:text-slate-350 flex items-center gap-1.5">
+                <span>⚖️</span> Scale Practice Mode
+              </span>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">Practice intervals within a specific key & scale formula.</p>
+            </div>
+            <button
+              onClick={() => setIsScaleModeEnabled(!isScaleModeEnabled)}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                isScaleModeEnabled ? 'bg-music-600' : 'bg-slate-300 dark:bg-slate-750'
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                  isScaleModeEnabled ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Scale selection controls, visible only when scale mode is enabled */}
+          {isScaleModeEnabled && (
+            <div className="mt-4 pt-3 border-t border-slate-200/50 dark:border-slate-800/50 space-y-4">
+              {/* Root Key Selector */}
+              <div>
+                <span className="text-[11px] font-bold text-slate-550 dark:text-slate-400 uppercase tracking-wider block mb-2">Root Key / Tonic</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {CHROMATIC_NOTES.map((note) => (
+                    <button
+                      key={note}
+                      onClick={() => setSelectedScaleRoot(note)}
+                      className={`min-w-[2.25rem] h-8 px-2 rounded-lg text-xs font-semibold border transition-all ${
+                        selectedScaleRoot === note
+                          ? 'bg-music-600 border-music-600 text-white shadow-sm font-bold'
+                          : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-850'
+                      }`}
+                    >
+                      {note}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Scale Type and Focus Mode Selectors */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-555 dark:text-slate-400 uppercase tracking-wider block mb-2">Scale Type</label>
+                  <select
+                    value={selectedScaleFormula}
+                    onChange={(e) => setSelectedScaleFormula(e.target.value)}
+                    className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-none focus:border-music-500 cursor-pointer"
+                  >
+                    {Object.keys(SCALE_FORMULAS).map((formulaName) => (
+                      <option key={formulaName} value={formulaName} className="bg-white dark:bg-slate-900">
+                        {formulaName} Scale
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <span className="text-[11px] font-bold text-slate-555 dark:text-slate-400 uppercase tracking-wider block mb-2">Interval Mode</span>
+                  <div className="flex bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-1 h-10">
+                    <button
+                      onClick={() => setScaleNotesMode('tonic')}
+                      className={`flex-1 rounded-lg text-[11px] font-semibold transition-all ${
+                        scaleNotesMode === 'tonic'
+                          ? 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200'
+                          : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-350'
+                      }`}
+                    >
+                      Tonic-based (from Root)
+                    </button>
+                    <button
+                      onClick={() => setScaleNotesMode('diatonic')}
+                      className={`flex-1 rounded-lg text-[11px] font-semibold transition-all ${
+                        scaleNotesMode === 'diatonic'
+                          ? 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200'
+                          : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-350'
+                      }`}
+                    >
+                      Diatonic (Any Notes)
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Play Direction Selectors */}
